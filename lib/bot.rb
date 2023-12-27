@@ -9,10 +9,6 @@ module Forger
     def initialize
       @bot = Discordrb::Bot.new(token: Forger::Config.discord.token)
 
-      @bot.mention do |event|
-        binding.pry
-      end
-
       @last_online = {}
       @offline = []
     end
