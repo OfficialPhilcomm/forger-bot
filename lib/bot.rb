@@ -30,7 +30,7 @@ module Forger
     def start
       Thread.new do
         while true
-          sleep(60)
+          sleep(120)
 
           begin
             update_status_messages
