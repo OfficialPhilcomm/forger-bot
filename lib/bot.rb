@@ -9,6 +9,20 @@ module Forger
     def initialize
       @bot = Discordrb::Bot.new(token: Forger::Config.discord.token)
 
+      @bot.button(custom_id: "resolve_error") do |event|
+        embed = event.message.embeds.first
+
+        event.update_message(
+          content: nil,
+          embeds: [{
+            title: embed.title,
+            description: embed.description,
+            color: 0x57F287.to_i,
+            timestamp: Time.now.strftime("%Y-%m-%dT%H:%M:%S.%L%z")
+          }],
+        )
+      end
+
       @last_online = {}
       @offline = []
     end
@@ -18,7 +32,11 @@ module Forger
         while true
           sleep(60)
 
-          update_status_messages
+          begin
+            update_status_messages
+          rescue StandardError => e
+            generate_error_message(errors_channel, e)
+          end
         end
       end
 
@@ -85,6 +103,41 @@ module Forger
       @_updates_channel ||= @bot.servers[Forger::Config.forge.server_id].channels.find do |channel|
         channel.id == Forger::Config.forge.updates_channel_id
       end
+    end
+
+    def errors_channel
+      @_errors_channel ||= @bot.servers[Forger::Config.forge.server_id].channels.find do |channel|
+        channel.id == Forger::Config.forge.errors_channel_id
+      end
+    end
+
+    def generate_error_message(channel, exception)
+      error_message = if exception.respond_to?(:full_message)
+        exception.full_message
+      else
+        exception.message
+      end
+      error_message = error_message[..1000] + "..." if error_message.length > 1000
+
+      view = Discordrb::Components::View.new
+
+      view.row do |r|
+        r.button(label: "Resolve", style: :success, custom_id: "resolve_error")
+      end
+
+      channel.send_message(
+        nil,
+        false,
+        {
+          title: exception.class.name,
+          description: "```#{error_message}```\n```#{exception.backtrace.join("\n")[..2000]}```",
+          color: 0xED4245.to_i
+        },
+        nil,
+        nil,
+        nil,
+        view
+      )
     end
   end
 end

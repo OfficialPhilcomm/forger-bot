@@ -15,6 +15,7 @@ module Forger
 
       group :forge do
         integer :server_id
+        integer :errors_channel_id
         integer :updates_channel_id
         list :bots
       end
