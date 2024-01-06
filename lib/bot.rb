@@ -5,6 +5,7 @@ require "json"
 require "time"
 require "discordrb"
 require_relative "config"
+require_relative "persistent_memory"
 
 module Forger
   class Bot
@@ -25,34 +26,22 @@ module Forger
         )
       end
 
-      @last_online = {}
-      @offline = []
+      @persistent_states = {}
 
       Forger::Config.forge.bots.each do |bot|
         id = bot["id"]
 
-        if !File.exists? "mem/#{id}.json"
-          bot_state = {
-            status: "offline",
-            last_seen: Time.now.to_s
-          }
-          File.write("mem/#{id}.json", bot_state.to_json)
-          @last_online[id] = Time.now
-          @offline << id
-        end
-
-        last_bot_state = JSON.parse(File.read("mem/#{id}.json"))
-        if !@offline.include?(id) && last_bot_state["status"] == "offline"
-          @offline << id
-        end
-        @last_online[id] = Time.parse(last_bot_state["last_seen"])
+        @persistent_states[id] = PersistentMemory.new(id, {
+          online: false,
+          last_seen: Time.now
+        })
       end
     end
 
     def start
       Thread.new do
         while true
-          sleep(5)
+          sleep(120)
 
           begin
             update_status_messages
@@ -70,6 +59,7 @@ module Forger
     def update_status_messages
       Forger::Config.forge.bots.each do |bot|
         id, name, message_id = bot.values_at("id", "name", "message_id")
+        last_state_online, last_seen = @persistent_states[id].state.values_at("online", "last_seen")
 
         is_bot_online = is_bot_online?(id)
         current_time = Time.now
@@ -78,7 +68,7 @@ module Forger
           "Status: Online"
         else
           str = ["Status: Offline"]
-          str << "Last Recorded Online: <t:#{@last_online[id].to_i}:R>" if @last_online.has_key?(id)
+          str << "Last Recorded Online: <t:#{last_seen.to_i}:R>"
           str.join("\n")
         end
         color = is_bot_online ? 0x57F287.to_i : 0xED4245.to_i
@@ -93,38 +83,25 @@ module Forger
           }
         )
 
-        @last_online[id] = Time.now if is_bot_online
-
-        if @offline.include?(id) && is_bot_online
-          @offline.delete(id)
-
+        if !last_state_online && is_bot_online
           updates_channel.send_temporary_message(
             "#{name} is back online",
             3600
           )
         end
 
-        if !is_bot_online && !@offline.include?(id)
-          @offline.push(id)
-
+        if !is_bot_online && last_state_online
           updates_channel.send_temporary_message(
             "#{name} is offline",
             3600
           )
-
-          bot_state = {
-            status: "offline",
-            last_seen: @last_online[id]
-          }
-          File.write("mem/#{id}.json", bot_state.to_json)
         end
 
         if is_bot_online
-          bot_state = {
-            status: "online",
-            last_seen: @last_online[id]
+          @persistent_states[id].state = {
+            online: true,
+            last_seen: Time.now
           }
-          File.write("mem/#{id}.json", bot_state.to_json)
         end
       end
     end
