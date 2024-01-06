@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "pry"
+require "json"
+require "time"
 require "discordrb"
 require_relative "config"
 
@@ -25,12 +27,32 @@ module Forger
 
       @last_online = {}
       @offline = []
+
+      Forger::Config.forge.bots.each do |bot|
+        id = bot["id"]
+
+        if !File.exists? "mem/#{id}.json"
+          bot_state = {
+            status: "offline",
+            last_seen: Time.now.to_s
+          }
+          File.write("mem/#{id}.json", bot_state.to_json)
+          @last_online[id] = Time.now
+          @offline << id
+        end
+
+        last_bot_state = JSON.parse(File.read("mem/#{id}.json"))
+        if !@offline.include?(id) && last_bot_state["status"] == "offline"
+          @offline << id
+        end
+        @last_online[id] = Time.parse(last_bot_state["last_seen"])
+      end
     end
 
     def start
       Thread.new do
         while true
-          sleep(120)
+          sleep(5)
 
           begin
             update_status_messages
@@ -89,6 +111,20 @@ module Forger
             "#{name} is offline",
             3600
           )
+
+          bot_state = {
+            status: "offline",
+            last_seen: @last_online[id]
+          }
+          File.write("mem/#{id}.json", bot_state.to_json)
+        end
+
+        if is_bot_online
+          bot_state = {
+            status: "online",
+            last_seen: @last_online[id]
+          }
+          File.write("mem/#{id}.json", bot_state.to_json)
         end
       end
     end
